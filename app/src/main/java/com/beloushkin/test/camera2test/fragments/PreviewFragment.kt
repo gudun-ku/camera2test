@@ -8,6 +8,7 @@ import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.media.MediaRecorder
 import android.media.ThumbnailUtils
+import android.net.Uri
 import android.os.*
 import android.provider.MediaStore
 import android.util.Log
@@ -16,6 +17,10 @@ import android.view.*
 import androidx.core.graphics.drawable.RoundedBitmapDrawable
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProviders
+import com.beloushkin.test.camera2test.CameraViewModel
+import com.beloushkin.test.camera2test.MainActivity
 
 import com.beloushkin.test.camera2test.R
 import kotlinx.android.synthetic.main.fragment_preview.*
@@ -53,6 +58,11 @@ class PreviewFragment : Fragment() {
     private val mediaRecorder by lazy {
         MediaRecorder()
     }
+
+    private val cameraViewModel by lazy {
+        ViewModelProviders.of(activity!!).get(CameraViewModel::class.java)
+    }
+
     private lateinit var currentVideoFilePath: String
 
     // needed vars and callbacks
@@ -323,8 +333,12 @@ class PreviewFragment : Fragment() {
 
         thumbnailButton.setOnClickListener {
             Log.d(TAG, "thumbnail button clicked")
+            val exoPlayerFragment = ExoPlayerFragment.newInstance()
+            activity ?: return@setOnClickListener
+            (activity as MainActivity).replaceFragment(exoPlayerFragment)
         }
     }
+
 
     private fun startRecordSession() {
         startChronometer()
@@ -336,6 +350,7 @@ class PreviewFragment : Fragment() {
         stopMediaRecorder()
         previewSession()
         thumbnailButton.setImageDrawable(createRoundThumb())
+        cameraViewModel.videoUri = Uri.fromFile(File(currentVideoFilePath))
     }
 
     private fun startChronometer() {

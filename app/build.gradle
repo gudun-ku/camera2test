@@ -37,6 +37,9 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
     // Easy permissions !
     implementation 'pub.devrel:easypermissions:1.1.3'
+    // Lifecycle and viewmodel
+    implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
+    //implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.2.0'
 
 
     testImplementation 'junit:junit:4.12'
