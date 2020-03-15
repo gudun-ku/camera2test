@@ -7,16 +7,24 @@ import android.content.Context
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.media.MediaRecorder
+import android.media.ThumbnailUtils
 import android.os.*
+import android.provider.MediaStore
 import android.util.Log
+import android.util.SparseIntArray
 import android.view.*
+import androidx.core.graphics.drawable.RoundedBitmapDrawable
+import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.fragment.app.Fragment
 
 import com.beloushkin.test.camera2test.R
 import kotlinx.android.synthetic.main.fragment_preview.*
 import pub.devrel.easypermissions.AfterPermissionGranted
 import pub.devrel.easypermissions.EasyPermissions
+import java.io.File
 import java.lang.IllegalArgumentException
+import java.lang.IllegalStateException
+import java.text.SimpleDateFormat
 import java.util.*
 
 
@@ -31,16 +39,21 @@ class PreviewFragment : Fragment() {
     private lateinit var captureSession: CameraCaptureSession
     private lateinit var captureRequestBuilder: CaptureRequest.Builder
 
-    private var isCaptured = false
+    private var isRecording = false
         set(value) {
             field = value
             if (value) {
-                startChronometer()
+                startRecordSession()
             } else {
-                stopChronometer()
+                stopRecordSession()
             }
         }
 
+
+    private val mediaRecorder by lazy {
+        MediaRecorder()
+    }
+    private lateinit var currentVideoFilePath: String
 
     // needed vars and callbacks
     private lateinit var cameraDevice: CameraDevice
@@ -92,7 +105,43 @@ class PreviewFragment : Fragment() {
                         captureSession.setRepeatingRequest(captureRequestBuilder.build(), null, null)
                     }
                 }
-            }, null)
+            }, backgroundHandler)
+    }
+
+    private fun recordSession() {
+
+        setupMediaRecorder()
+
+        val surfaceTexture = previewTextureView.surfaceTexture
+        surfaceTexture.setDefaultBufferSize(MAX_PREVIEW_WIDTH, MAX_PREVIEW_HEIGHT)
+        val textureSurface = Surface(surfaceTexture)
+        val recordSurface = mediaRecorder.surface
+
+        captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD)
+        captureRequestBuilder.addTarget(textureSurface)
+        captureRequestBuilder.addTarget(recordSurface)
+        val surfaces = ArrayList<Surface>().apply {
+            add(textureSurface)
+            add(recordSurface)
+        }
+
+        cameraDevice.createCaptureSession(surfaces,
+            object : CameraCaptureSession.StateCallback() {
+                override fun onConfigureFailed(session: CameraCaptureSession) {
+                    Log.e(TAG, "Creating recording session error!")
+                }
+
+                // no connecting callbacks on previews
+                override fun onConfigured(session: CameraCaptureSession) {
+                    if (session != null) {
+                        captureSession = session
+                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                        captureSession.setRepeatingRequest(captureRequestBuilder.build(), null, null)
+                        //isRecording = true
+                        mediaRecorder.start()
+                    }
+                }
+            }, backgroundHandler)
     }
 
     private fun closeCamera() {
@@ -114,7 +163,59 @@ class PreviewFragment : Fragment() {
         } catch (e: InterruptedException ) {
             Log.e(TAG, e.toString())
         }
+    }
 
+    private fun createVideoFileName(): String {
+        val timestamp = SimpleDateFormat("yyyMMdd_HHmmss").format(Date())
+        return "VIDEO_${timestamp}.mp4"
+    }
+
+    private fun createVideoFile(): File {
+        val videoFile = File(context?.filesDir, createVideoFileName())
+        currentVideoFilePath = videoFile.absolutePath
+        return videoFile
+    }
+
+    private fun createVideoFileAbsolutePath(): String {
+        val videoFile = File(context?.filesDir, createVideoFileName())
+        currentVideoFilePath = videoFile.absolutePath
+        return currentVideoFilePath
+    }
+
+    private fun setupMediaRecorder() {
+        // get camera orientation
+        val rotation = activity?.windowManager?.defaultDisplay?.rotation
+        val sensorOrientation = cameraCharacteristics(
+            cameraId(CameraCharacteristics.LENS_FACING_BACK),
+            CameraCharacteristics.SENSOR_ORIENTATION
+        )
+        when (sensorOrientation) {
+            SENSOR_DEFAULT_ORIENTATION_DEGREES ->
+                mediaRecorder.setOrientationHint(DEFAULT_ORIENTATION.get(rotation!!))
+            SENSOR_INVERSE_ORIENTATION_DEGREES ->
+                mediaRecorder.setOrientationHint(INVERSE_ORIENTATION.get(rotation!!))
+        }
+        mediaRecorder.apply {
+            setVideoSource(MediaRecorder.VideoSource.SURFACE)
+            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            setOutputFile(createVideoFileAbsolutePath())
+            setVideoEncodingBitRate(10_000_000)
+            setVideoFrameRate(30)
+            setVideoSize(640, 480)
+            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+            prepare()
+        }
+    }
+
+    private fun stopMediaRecorder() {
+        mediaRecorder.apply {
+            try {
+                stop()
+                reset()
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, e.toString())
+            }
+        }
     }
 
     private fun <T> cameraCharacteristics(cameraId: String, key: CameraCharacteristics.Key<T>): T {
@@ -122,6 +223,7 @@ class PreviewFragment : Fragment() {
         return when (key) {
             CameraCharacteristics.LENS_FACING -> characteristics.get(key)!!
             CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP -> characteristics.get(key)!!
+            CameraCharacteristics.SENSOR_ORIENTATION -> characteristics.get(key)!!
             else -> throw IllegalArgumentException("Camera characteristics key not recognized!")
         }
     }
@@ -155,6 +257,22 @@ class PreviewFragment : Fragment() {
         const val REQUEST_CAMERA_PERMISSION = 100
         private val TAG = PreviewFragment::class.qualifiedName
         @JvmStatic fun newInstance() = PreviewFragment()
+
+        private val SENSOR_DEFAULT_ORIENTATION_DEGREES = 90
+        private val SENSOR_INVERSE_ORIENTATION_DEGREES = 270
+        private val DEFAULT_ORIENTATION = SparseIntArray().apply {
+            append(Surface.ROTATION_0, 90)
+            append(Surface.ROTATION_90, 0)
+            append(Surface.ROTATION_180, 270)
+            append(Surface.ROTATION_270, 180)
+        }
+
+        private val INVERSE_ORIENTATION = SparseIntArray().apply {
+            append(Surface.ROTATION_0, 270)
+            append(Surface.ROTATION_90, 180)
+            append(Surface.ROTATION_180, 90)
+            append(Surface.ROTATION_270, 0)
+        }
     }
 
     private val surfaceListener = object: TextureView.SurfaceTextureListener {
@@ -200,12 +318,24 @@ class PreviewFragment : Fragment() {
 
         captureButton.setOnClickListener {
             Log.d(TAG,"capture button clicked")
-            isCaptured = !isCaptured
+            isRecording = !isRecording
         }
 
         thumbnailButton.setOnClickListener {
             Log.d(TAG, "thumbnail button clicked")
         }
+    }
+
+    private fun startRecordSession() {
+        startChronometer()
+        recordSession()
+    }
+
+    private fun stopRecordSession() {
+        stopChronometer()
+        stopMediaRecorder()
+        previewSession()
+        thumbnailButton.setImageDrawable(createRoundThumb())
     }
 
     private fun startChronometer() {
@@ -225,6 +355,15 @@ class PreviewFragment : Fragment() {
             chronometer.setTextColor(resources.getColor(android.R.color.white))
         }
         chronometer.stop()
+    }
+
+    private fun createVideoThumb() = ThumbnailUtils.createVideoThumbnail(currentVideoFilePath,
+        MediaStore.Video.Thumbnails.MICRO_KIND)
+
+    private fun createRoundThumb() : RoundedBitmapDrawable {
+        val drawable = RoundedBitmapDrawableFactory.create(resources, createVideoThumb())
+        drawable.isCircular = true
+        return drawable
     }
 
     override fun onResume() {
