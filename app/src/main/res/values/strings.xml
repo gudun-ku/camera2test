@@ -6,4 +6,6 @@
     <string name="drawer_close">Close drawer</string>
     <string name="preview">Camera Preview</string>
     <string name="camera_request_rationale">Camera app requires camera access</string>
+    <string name="capture_button">Button for capture image</string>
+    <string name="thumbnail_button">Button for latest image</string>
 </resources>

@@ -6,9 +6,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
-import android.os.Bundle
-import android.os.Handler
-import android.os.HandlerThread
+import android.media.MediaRecorder
+import android.os.*
 import android.util.Log
 import android.view.*
 import androidx.fragment.app.Fragment
@@ -31,6 +30,17 @@ class PreviewFragment : Fragment() {
     private val MAX_PREVIEW_HEIGHT = 1920
     private lateinit var captureSession: CameraCaptureSession
     private lateinit var captureRequestBuilder: CaptureRequest.Builder
+
+    private var isCaptured = false
+        set(value) {
+            field = value
+            if (value) {
+                startChronometer()
+            } else {
+                stopChronometer()
+            }
+        }
+
 
     // needed vars and callbacks
     private lateinit var cameraDevice: CameraDevice
@@ -183,6 +193,38 @@ class PreviewFragment : Fragment() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         EasyPermissions.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
+    override fun onActivityCreated(savedInstanceState: Bundle?) {
+        super.onActivityCreated(savedInstanceState)
+
+        captureButton.setOnClickListener {
+            Log.d(TAG,"capture button clicked")
+            isCaptured = !isCaptured
+        }
+
+        thumbnailButton.setOnClickListener {
+            Log.d(TAG, "thumbnail button clicked")
+        }
+    }
+
+    private fun startChronometer() {
+        chronometer.base = SystemClock.elapsedRealtime()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            chronometer.setTextColor(resources.getColor(android.R.color.holo_red_light, null))
+        } else {
+            chronometer.setTextColor(resources.getColor(android.R.color.holo_red_light))
+        }
+        chronometer.start()
+    }
+
+    private fun stopChronometer() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            chronometer.setTextColor(resources.getColor(android.R.color.white, null))
+        } else {
+            chronometer.setTextColor(resources.getColor(android.R.color.white))
+        }
+        chronometer.stop()
     }
 
     override fun onResume() {
